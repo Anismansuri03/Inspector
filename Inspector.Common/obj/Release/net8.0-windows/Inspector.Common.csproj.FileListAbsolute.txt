@@ -1,0 +1,11 @@
+C:\Users\Debian\Downloads\Inspector-v2\Inspector-v2\Inspector.Common\bin\Release\net8.0-windows\Inspector.Common.deps.json
+C:\Users\Debian\Downloads\Inspector-v2\Inspector-v2\Inspector.Common\bin\Release\net8.0-windows\Inspector.Common.dll
+C:\Users\Debian\Downloads\Inspector-v2\Inspector-v2\Inspector.Common\bin\Release\net8.0-windows\Inspector.Common.pdb
+C:\Users\Debian\Downloads\Inspector-v2\Inspector-v2\Inspector.Common\obj\Release\net8.0-windows\Inspector.Common.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Debian\Downloads\Inspector-v2\Inspector-v2\Inspector.Common\obj\Release\net8.0-windows\Inspector.Common.AssemblyInfoInputs.cache
+C:\Users\Debian\Downloads\Inspector-v2\Inspector-v2\Inspector.Common\obj\Release\net8.0-windows\Inspector.Common.AssemblyInfo.cs
+C:\Users\Debian\Downloads\Inspector-v2\Inspector-v2\Inspector.Common\obj\Release\net8.0-windows\Inspector.Common.csproj.CoreCompileInputs.cache
+C:\Users\Debian\Downloads\Inspector-v2\Inspector-v2\Inspector.Common\obj\Release\net8.0-windows\Inspector.Common.dll
+C:\Users\Debian\Downloads\Inspector-v2\Inspector-v2\Inspector.Common\obj\Release\net8.0-windows\refint\Inspector.Common.dll
+C:\Users\Debian\Downloads\Inspector-v2\Inspector-v2\Inspector.Common\obj\Release\net8.0-windows\Inspector.Common.pdb
+C:\Users\Debian\Downloads\Inspector-v2\Inspector-v2\Inspector.Common\obj\Release\net8.0-windows\ref\Inspector.Common.dll
