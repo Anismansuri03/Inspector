@@ -250,6 +250,44 @@ public static class HtmlReportBuilder
           .trigger-line { margin-top:10px; padding:10px 12px; background:#161227; border:1px solid #2c2450; border-radius:8px; font-size:12.5px; }
           .trigger-line b { color:#b9a6ff; }
 
+          .remediation-section {
+            background: var(--panel);
+            border: 1px solid var(--red-bd);
+            border-radius: 12px;
+            padding: 16px 18px;
+            margin: 22px 0 10px;
+          }
+          .remediation-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--red);
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            margin-bottom: 10px;
+          }
+          .remediation-steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 8px;
+          }
+          .remediation-step {
+            background: var(--panel-2);
+            border-radius: 8px;
+            padding: 8px 10px;
+            font-size: 12px;
+            line-height: 1.5;
+          }
+          .remediation-step code {
+            font-family: "SF Mono", Consolas, monospace;
+            background: rgba(255,255,255,0.05);
+            padding: 1px 4px;
+            border-radius: 3px;
+            color: #ff8e8e;
+          }
+
           .section-title { font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin: 22px 0 10px; }
           .section-title:first-child { margin-top:0; }
         </style></head><body><div class="wrap">
@@ -401,16 +439,28 @@ public static class HtmlReportBuilder
                             <div class="mono">{CopyBtn()}{HtmlEncode(c.CommandLine ?? "(none)")}</div>
                             <div class="field-label">Parent process</div>
                             <div class="mono">{HtmlEncode(c.ParentImage ?? "?")} &rarr; {HtmlEncode(c.ParentCommandLine ?? "(none)")}</div>
+                            {(ev.AncestorChain?.Any() == true ? $@"
+                            <div class=""field-label"">Parent chain (ancestors)</div>
+                            <div class=""mono"">{CopyBtn()}{string.Join(" &rarr; ", ev.AncestorChain.Select(HtmlEncode))}</div>" : "")}
                           </div>
                           <div>
                             <div class="field-label">User &middot; Integrity level</div>
                             <div class="mono">{HtmlEncode(c.User ?? "?")} &middot; {HtmlEncode(c.IntegrityLevel ?? "?")}</div>
                             <div class="field-label">Publisher / file info</div>
+                            <div class="mono">{CopyBtn()}{HtmlEncode(c.SignedStatus ?? "signature unknown")}</div>
+                            <div class="field-label">Company</div>
                             <div class="mono">{HtmlEncode(c.Company ?? "Unknown company")} &middot; {HtmlEncode(c.OriginalFileName ?? "no original filename recorded")}</div>
                             <div class="field-label">Hash</div>
                             <div class="mono">{CopyBtn()}{HtmlEncode(c.Hashes ?? "none")}</div>
                           </div>
                         </div>
+                        {(ev.RiskLevel == "investigate" ? $@"
+                        <div class='remediation-section'>
+                          <div class='remediation-title'>&#9888;&#65039; What should I do next?</div>
+                          <div class='remediation-steps'>
+                            {GenerateRemediationSteps(ev)}
+                          </div>
+                        </div>" : "")}
                       </div>
                     </details>
                     """);
@@ -621,6 +671,109 @@ public static class HtmlReportBuilder
     {
         var idx = trigger.IndexOf(']');
         return idx >= 0 && idx + 1 < trigger.Length ? trigger[(idx + 1)..].Trim() : trigger;
+    }
+
+    /// <summary>
+    /// Generates actionable remediation steps based on the risk category of the event.
+    /// Each category gets specific guidance on what to check, disable, or investigate.
+    /// </summary>
+    private static string GenerateRemediationSteps(MergedEvent ev)
+    {
+        var c = ev.Create;
+        var commandLower = (c.CommandLine ?? "").ToLowerInvariant();
+        var procName = Path.GetFileName(c.Image ?? "").ToLowerInvariant();
+        var parentName = Path.GetFileName(c.ParentImage ?? "").ToLowerInvariant();
+        var steps = new List<string>();
+
+        // --- Run Key remediation ---
+        if (!string.IsNullOrEmpty(ev.LikelyTrigger) && ev.LikelyTrigger.Contains("Run Key"))
+        {
+            steps.Add($"<div class='remediation-step'>Check the Run key in <code>HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run</code> and remove any entries referencing <b>{HtmlEncode(procName)}</b></div>");
+        }
+
+        // --- Scheduled Task remediation ---
+        if (!string.IsNullOrEmpty(ev.LikelyTrigger) && ev.LikelyTrigger.Contains("Scheduled Task"))
+        {
+            steps.Add($"<div class='remediation-step'>Review Task Scheduler: <code>taskschd.msc</code> &rarr; find the task referencing <b>{HtmlEncode(procName)}</b> &rarr; disable it</div>");
+        }
+
+        // --- WMI remediation ---
+        if (!string.IsNullOrEmpty(ev.LikelyTrigger) && ev.LikelyTrigger.Contains("WMI"))
+        {
+            steps.Add($"<div class='remediation-step'>Check WMI event consumers: <code>Get-WmiObject -Namespace root\\subscription -Class CommandLineEventConsumer</code> and remove suspicious entries</div>");
+        }
+
+        // --- PowerShell suspicious usage ---
+        if (procName.Contains("powershell") || commandLower.Contains("-enc") || commandLower.Contains("-encodedcommand") || commandLower.Contains("iex") || commandLower.Contains("invoke-expression"))
+        {
+            steps.Add($"<div class='remediation-step'>Investigate PowerShell usage in <code>Microsoft-Windows-PowerShell/Operational</code> event log for full script block logging</div>");
+        }
+
+        // --- CMD suspicious usage ---
+        if (procName == "cmd.exe" && (commandLower.Contains("/c") || commandLower.Contains("powershell") || commandLower.Contains("wscript")))
+        {
+            steps.Add($"<div class='remediation-step'>CMD spawned another script engine &mdash; check if this is legitimate installer behavior or suspicious chaining</div>");
+        }
+
+        // --- mshta.exe ---
+        if (procName == "mshta.exe")
+        {
+            steps.Add($"<div class='remediation-step'><b>mshta.exe</b> is rarely needed legitimately &mdash; block it in Windows Defender Application Control or AppLocker if unused</div>");
+        }
+
+        // --- regsvr32.exe ---
+        if (procName == "regsvr32.exe")
+        {
+            steps.Add($"<div class='remediation-step'><b>regsvr32.exe</b> with remote URLs is a common living-off-the-land technique &mdash; check for <code>/s</code> + URL patterns and block in your perimeter firewall</div>");
+        }
+
+        // --- rundll32.exe ---
+        if (procName == "rundll32.exe")
+        {
+            steps.Add($"<div class='remediation-step'>Verify the DLL being loaded is legitimate &mdash; <code>rundll32.exe</code> loading from temp dirs or with unusual entry points is suspicious</div>");
+        }
+
+        // --- certutil.exe ---
+        if (procName == "certutil.exe")
+        {
+            steps.Add($"<div class='remediation-step'><b>certutil.exe</b> with <code>-urlcache</code> or <code>-decode</code> is often used to download/execute payloads &mdash; check network logs and block if found</div>");
+        }
+
+        // --- bitsadmin.exe ---
+        if (procName == "bitsadmin.exe")
+        {
+            steps.Add($"<div class='remediation-step'><b>bitsadmin.exe</b> can download arbitrary files &mdash; verify the job was not created by malicious software</div>");
+        }
+
+        // --- wscript.exe / cscript.exe ---
+        if (procName == "wscript.exe" || procName == "cscript.exe")
+        {
+            steps.Add($"<div class='remediation-step'>Script execution at startup &mdash; review the .js/.vbs file content and check its digital signature</div>");
+        }
+
+        // --- msiexec.exe ---
+        if (procName == "msiexec.exe")
+        {
+            steps.Add($"<div class='remediation-step'>MSI installer launched at startup &mdash; verify the .msi package is from a trusted publisher</div>");
+        }
+
+        // --- Generic next steps for any flagged event ---
+        if (steps.Count == 0)
+        {
+            // No specific remediation found, give generic advice
+            if (!string.IsNullOrEmpty(ev.LikelyTrigger))
+            {
+                steps.Add($"<div class='remediation-step'>Investigate autostart entry: <code>{HtmlEncode(ev.LikelyTrigger)}</code></div>");
+            }
+            steps.Add($"<div class='remediation-step'>Check if <b>{HtmlEncode(procName)}</b> is in <code>{HtmlEncode(c.Hashes ?? "no hash recorded")}</code> on VirusTotal</div>");
+            steps.Add($"<div class='remediation-step'>Review the parent process chain for unexpected ancestors</div>");
+        }
+
+        // Always add the search tip for non-technical users
+        var searchQuery = string.IsNullOrEmpty(c.CommandLine) ? "" : (c.CommandLine.Length > 60 ? c.CommandLine[..60] : c.CommandLine);
+        steps.Add($"<div class='remediation-step'>Search online for: <code>{HtmlEncode(procName)} {HtmlEncode(searchQuery)}</code></div>");
+
+        return string.Join("", steps);
     }
 
     private static string GenerateReportAIPrompt(

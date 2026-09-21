@@ -19,6 +19,7 @@
     .\Inspector.ps1 -Report -Export report.csv -Format csv  # export to CSV
     .\Inspector.ps1 -Report -Since "24h"              # only show last 24 hours
     .\Inspector.ps1 -Report -Since "2024-01-01"       # only show since date
+    .\Inspector.ps1 -Report -FlashOnly                # show only flash processes (< 5s lifetime)
 #>
 
 param(
@@ -32,7 +33,8 @@ param(
     [string]$Export,
     [string]$Format = "json",
     [string]$Since = "",
-    [switch]$NoOpen
+    [switch]$NoOpen,
+    [switch]$FlashOnly
 )
 
 # --- Execution Policy Check ---
@@ -195,6 +197,7 @@ function Invoke-Report {
     # Build report arguments
     $reportArgs = @()
     if ($NoOpen) { $reportArgs += "--no-open" }
+    if ($FlashOnly) { $reportArgs += "--flash-only" }
     if ($Export) {
         $reportArgs += "--export"
         $reportArgs += $Export
@@ -299,4 +302,5 @@ else {
     Write-Host "  -Export <file>    Export to JSON or CSV"
     Write-Host "  -Format csv       Use CSV format (default: json)"
     Write-Host "  -Since <time>     Filter by time (e.g., '24h', '7d', '2024-01-01')"
+    Write-Host "  -FlashOnly        Show only flash processes (< 5 seconds lifetime)"
 }

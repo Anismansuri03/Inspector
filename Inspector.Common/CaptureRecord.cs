@@ -30,6 +30,10 @@ public record CaptureRecord
     public string? ParentUser { get; init; }
     public string? LogonId { get; init; }
     public string? TerminalSessionId { get; init; }
+
+    // Publisher/signature verification (populated on create events)
+    public string? SignedStatus { get; init; }
+    public bool IsSysInternalOrMicrosoftSigned { get; init; }
 }
 
 /// <summary>

@@ -1,6 +1,7 @@
 using System.Diagnostics.Eventing.Reader;
 using System.Text.Json;
 using System.Xml.Linq;
+using System.Security.Cryptography.X509Certificates;
 using Inspector.Common;
 
 namespace Inspector.Service;
@@ -103,6 +104,9 @@ public class Worker : BackgroundService
                 ParentUser = data.GetValueOrDefault("ParentUser"),
                 LogonId = data.GetValueOrDefault("LogonId"),
                 TerminalSessionId = data.GetValueOrDefault("TerminalSessionId"),
+                // Publisher verification (may be slow, but only on create events)
+                SignedStatus = eventId == 1 ? GetFileSignatureStatus(image) : null,
+                IsSysInternalOrMicrosoftSigned = eventId == 1 ? CheckMicrosoftOrSysinternalsSignature(image) : false,
             };
 
             WriteCaptureRecord(record);
@@ -122,6 +126,73 @@ public class Worker : BackgroundService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to process a Sysmon event.");
+        }
+    }
+
+    /// <summary>
+    /// Checks the digital signature status of an executable file.
+    /// Returns a human-readable summary like "Signed - CN=Microsoft Corporation" or "Unsigned".
+    /// </summary>
+    private static string? GetFileSignatureStatus(string imagePath)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(imagePath) || !File.Exists(imagePath))
+                return "File not found";
+
+            var cert = X509Certificate.CreateFromSignedFile(imagePath);
+            if (cert == null)
+                return "Unsigned";
+
+            // Extract subject name for human-readable output
+            var subject = cert.Subject;
+            // Try to get a cleaner subject using X509Certificate2
+            try
+            {
+                var cert2 = new X509Certificate2(cert);
+                var cn = cert2.SubjectName.Format(false);
+                if (!string.IsNullOrEmpty(cn))
+                    return $"Signed - {cn}";
+            }
+            catch { /* Fall back to full subject */ }
+
+            return $"Signed - {subject}";
+        }
+        catch (System.Security.Cryptography.CryptographicException)
+        {
+            // File doesn't have a signature or signature is invalid
+            return "Unsigned or invalid signature";
+        }
+        catch (Exception ex)
+        {
+            return $"Signature check failed: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Checks if the file is signed by Microsoft or Sysinternals.
+    /// Used as a trusted-publisher shortcut for benign classification.
+    /// </summary>
+    private static bool CheckMicrosoftOrSysinternalsSignature(string imagePath)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(imagePath) || !File.Exists(imagePath))
+                return false;
+
+            var cert = X509Certificate.CreateFromSignedFile(imagePath);
+            if (cert == null)
+                return false;
+
+            var cert2 = new X509Certificate2(cert);
+            var subject = cert2.Subject?.ToUpperInvariant() ?? "";
+
+            // Check for Microsoft or Sysinternals publishers
+            return subject.Contains("MICROSOFT") || subject.Contains("SYSINTERALS");
+        }
+        catch
+        {
+            return false;
         }
     }
 

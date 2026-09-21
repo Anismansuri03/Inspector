@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("InspectorService")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c3db4ebc1850a98587b7bf9200290c798d4739d5")]
 [assembly: System.Reflection.AssemblyProductAttribute("InspectorService")]
 [assembly: System.Reflection.AssemblyTitleAttribute("InspectorService")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

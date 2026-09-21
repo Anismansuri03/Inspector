@@ -12,6 +12,7 @@ string captureFile = config.CaptureFilePath;
 string htmlOut = Path.Combine(logDir, $"report_{DateTime.Now:yyyyMMdd_HHmmss}.html");
 string? exportFile = argsObj.ExportFile;
 DateTime? sinceFilter = argsObj.Since;
+bool flashOnly = argsObj.FlashOnly;
 
 bool openHtml = !argsObj.NoOpen && string.IsNullOrEmpty(exportFile);
 
@@ -86,12 +87,21 @@ if (events.Count == 0)
 AnsiConsole.MarkupLine("[grey]Scanning autostart locations...[/]");
 var autostart = AutostartScanner.ScanAll();
 
+// ---- Apply flash-only filter if requested ---------------------------------
+if (flashOnly)
+{
+    events = events.Where(e => e.IsFlashProcess).ToList();
+    AnsiConsole.MarkupLine($"[grey]Flash filter: showing only {events.Count} process(es) with lifetime < {InspectorConstants.FlashProcessThresholdMs}ms[/]");
+}
+
 // ---- 3. Correlate + risk-flag each event -----------------------------------
 foreach (var ev in events)
 {
     var c = ev.Create;
-    bool signedTrusted = !string.IsNullOrEmpty(c.Company) &&
-        (c.Company.Contains("Microsoft", StringComparison.OrdinalIgnoreCase));
+    bool signedTrusted = !string.IsNullOrEmpty(c.SignedStatus) &&
+        (c.SignedStatus.Contains("Microsoft", StringComparison.OrdinalIgnoreCase) ||
+         c.IsSysInternalOrMicrosoftSigned ||
+         c.Company?.Contains("Microsoft", StringComparison.OrdinalIgnoreCase) == true);
 
     // Try to find an autostart entry whose command references this process's parent or command line
     var match = autostart.FirstOrDefault(a =>
@@ -100,6 +110,25 @@ foreach (var ev in events)
 
     if (match != null)
         ev.LikelyTrigger = $"[{match.Source}] {match.Name}";
+
+    // Build ancestor chain: walk up parent links from the capture dictionary
+    var ancestorChain = new List<string>();
+    var currentGuid = c.ParentProcessGuid;
+    int depth = 0;
+    while (!string.IsNullOrEmpty(currentGuid) && depth < 10)
+    {
+        if (creates.TryGetValue(currentGuid, out var parent))
+        {
+            ancestorChain.Add($"{Path.GetFileName(parent.Image)} ({parent.Pid})");
+            currentGuid = parent.ParentProcessGuid;
+        }
+        else
+        {
+            break;
+        }
+        depth++;
+    }
+    ev.AncestorChain = ancestorChain;
 
     if (AutostartScanner.IsKnownBenign(c.CommandLine ?? "") || AutostartScanner.IsKnownBenign(c.ParentCommandLine ?? "") || signedTrusted)
         ev.RiskLevel = "benign";
@@ -267,6 +296,7 @@ public class ArgsParser
     public string Format { get; } = "json";
     public DateTime? Since { get; }
     public bool NoOpen { get; }
+    public bool FlashOnly { get; }
 
     public ArgsParser(string[] args)
     {
@@ -289,6 +319,10 @@ public class ArgsParser
                 case "--no-open":
                 case "-n":
                     NoOpen = true;
+                    break;
+                case "--flash-only":
+                case "-flash":
+                    FlashOnly = true;
                     break;
             }
         }

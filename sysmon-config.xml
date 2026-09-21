@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Sysmon configuration for Inspector v2
+  ======================================
+  This is a minimal config that captures:
+  - Process creation (Event ID 1)
+  - Process termination (Event ID 5)
+
+  It filters out noise from System accounts and common Windows update
+  processes while keeping full visibility into user-driven PowerShell,
+  CMD, and script execution.
+
+  Install with:
+    Sysmon64.exe -accepteula -i sysmon-config.xml
+-->
+<Sysmon schemaversion="4.32">
+  <!-- Capture process creation events -->
+  <EventFiltering>
+    <!-- Process Create (Event ID 1) -->
+    <ProcessCreate onmatch="exclude">
+      <!-- Exclude common Windows system noise -->
+      <Rule name="Windows Update" groupRelation="or">
+        <Image condition="contains">wuauclt</Image>
+        <Image condition="contains">wuaueng</Image>
+        <Image condition="contains">wuauserv</Image>
+        <Image condition="contains">usoclient</Image>
+      </Rule>
+
+      <Rule name="Windows Services" groupRelation="or">
+        <User condition="is">NT AUTHORITY\SYSTEM</User>
+        <Image condition="end with">svchost.exe</Image>
+        <Image condition="end with">services.exe</Image>
+        <Image condition="end with">winlogon.exe</Image>
+        <Image condition="end with">lsass.exe</Image>
+      </Rule>
+
+      <Rule name="Known Windows Processes">
+        <Image condition="contains any">wuauclt;wuaueng;usoclient;OneDriveSetup;GoogleUpdate;MicrosoftEdgeUpdate</Image>
+      </Rule>
+    </ProcessCreate>
+
+    <!-- Process Terminate (Event ID 5) - capture all, we need these for lifetime calculation -->
+    <!-- No filtering needed - termination events are cheap to capture -->
+  </EventFiltering>
+</Sysmon>

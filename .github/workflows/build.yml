@@ -1,0 +1,92 @@
+# GitHub Actions workflow for Inspector v2
+# Builds and publishes artifacts automatically
+
+name: Build & Release
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Build All Projects
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build Inspector.Common
+        run: dotnet build Inspector.Common/Inspector.Common.csproj -c Release --no-restore
+
+      - name: Build InspectorService (publish as self-contained)
+        run: |
+          dotnet publish InspectorService/InspectorService.csproj -c Release -r win-x64 \
+            --self-contained false -p:PublishReadyToRun=true -o InspectorService\bin\publish
+
+      - name: Build InspectorReport
+        run: dotnet build InspectorReport/InspectorReport.csproj -c Release --no-restore
+
+      - name: Upload InspectorService artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: InspectorService
+          path: InspectorService/bin/publish/
+
+      - name: Upload InspectorReport artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: InspectorReport
+          path: InspectorReport/bin/Release/net8.0-windows/
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: windows-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish InspectorService
+        run: |
+          dotnet publish InspectorService/InspectorService.csproj -c Release -r win-x64 \
+            --self-contained false -p:PublishReadyToRun=true -o InspectorService\bin\publish
+
+      - name: Build InspectorReport
+        run: dotnet build InspectorReport/InspectorReport.csproj -c Release
+
+      - name: Create release archive
+        run: |
+          7z a Inspector-v2.zip `
+            InspectorService/bin/publish/InspectorService.exe `
+            InspectorService/bin/publish/InspectorService.dll `
+            InspectorReport/bin/Release/net8.0-windows/InspectorReport.exe `
+            InspectorReport/bin/Release/net8.0-windows/InspectorReport.dll `
+            Inspector.ps1 `
+            Install-Inspector.bat `
+            sysmon-config.xml `
+            README.md `
+            LICENSE
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Inspector-v2.zip
+          generate_release_notes: true
