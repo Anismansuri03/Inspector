@@ -1,192 +1,214 @@
-# 🛡️ Inspector v2
+# 🛡️ Inspector
 
-**Catch the invisible: focused monitoring for suspicious startup processes on Windows**
+**What was that command window that just flashed and disappeared?**
 
-Inspector is a lightweight Windows security monitoring tool that uses Sysmon to detect suspicious processes that launch at startup — especially those annoying "flash-and-vanish" command windows that disappear before you can read them.
+Inspector is a local-only Windows investigation tool for short-lived processes —
+the popups you never get a chance to read. A background Windows Service records
+Sysmon process events (command line, parent process, hashes, lifetime),
+correlates them with autostart entries, and turns the capture into a console
+summary and an interactive HTML report with heuristic risk scoring.
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![.NET](https://img.shields.io/badge/.NET-8.0-purple.svg)
-![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
+![License](https://img.shields.io/badge/license-MIT-blue.svg) ![.NET](https://img.shields.io/badge/.NET-8.0-purple.svg) ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg) ![Version](https://img.shields.io/badge/version-v2.0.0-orange.svg) ![Build & Release](https://github.com/Anismansuri03/Inspector/actions/workflows/build.yml/badge.svg?branch=main)
+
+> **Not antivirus.** Inspector does not detect, block, or remove malware — risk
+> scores are investigation leads, not verdicts. Use it alongside antivirus/EDR,
+> not instead of them.
+
+<!-- SCREENSHOT AREA — drop in later, no redesign needed.
+     1. inspector-report.png        → hero image, replace the box below with:
+        <img src="docs/screenshots/inspector-report.png" alt="Inspector report" width="900">
+     2. inspector-console.png       → console summary (place in Usage)
+     3. inspector-investigation.png → event detail: hashes, signer, parent chain (place in Usage)
+     4. inspector-compare.png       → autostart baseline diff (place in Usage/Compare)
+-->
+<table>
+  <tr>
+    <td align="center" width="900">
+      <strong>Screenshot incoming</strong><br>
+      <code>docs/screenshots/inspector-report.png</code>
+    </td>
+  </tr>
+</table>
+
+| Design principle | What it means |
+|---|---|
+| **Local-first** | No telemetry · no cloud backend · no phone-home |
+| **Investigation-focused** | Short-lived processes · command lines · parent processes · persistence |
+| **Heuristic, not verdict** | Risk scores are investigation leads, not malware verdicts |
+| **Sysmon-powered** | Kernel-level process create/terminate events — recorded even when a process lives only milliseconds |
 
 ---
 
-## 🎯 What It Does
+## What Inspector Does
 
-Ever seen a black command window flash on your screen during startup, too fast to read? That's often PowerShell, CMD, or script-based malware testing the waters. Inspector:
+Inspector answers three questions about startup activity: **what ran**,
+**what launched it**, and **whether it matters**. It consumes Sysmon process
+events through a Windows Service, correlates each capture with persistence
+locations, scores it 0–100 with plain-English reasons, and writes everything
+locally as `capture.jsonl` plus an HTML report — nothing leaves the machine.
 
-- **Captures flash processes** (even ones that live < 1 second) with command line, user, parent process, and hash details
-- **Correlates with autostart locations** (Run keys, Scheduled Tasks, WMI subscriptions)
-- **Generates beautiful HTML reports** with risk assessment
-- **Runs as a Windows Service** — designed to remain lightweight when idle
-- **Uses Sysmon** — captures matching Sysmon process-creation events through Windows Event Log monitoring (no polling)
+## Why It Exists
+
+Startup popups disappear too fast to read, and nothing in Windows ties a
+two-hundred-millisecond console window back to the scheduled task or Run key
+that launched it. Inspector closes that gap **after the fact**: every captured
+event keeps its full command line, parent chain, file hashes, signature status,
+and exact lifetime, linked to its likely trigger — so you investigate what
+happened instead of guessing.
+
+## Key Capabilities
+
+- **Flash-process capture** — Sysmon create/terminate pairs give exact
+  lifetime; processes living only a fraction of a second are recorded
+- **Autostart correlation** — Run keys, Startup folders, scheduled tasks, WMI
+  subscriptions, Winlogon, services, AppInit DLLs, browser/Office add-ins; each
+  event linked to its likely trigger
+- **Heuristic scoring** — 0–100 with plain-English reasons; known-benign
+  patterns and trusted publishers are marked
+- **Interactive HTML report** — timeline, search and filter, hashes,
+  parent-process chain, remediation notes, autostart inventory
+- **Baseline diffing** — save an autostart snapshot, diff it later to see which
+  startup entries are new
+- **Windows Service** — event-driven (reacts to Sysmon events, no polling);
+  `-Activate` / `-Deactivate` control it
 
 ---
 
-## 🚀 Quick Start (3 commands)
+## Quick Start
+
+Run from an **elevated (Administrator) PowerShell** — the script requires it.
 
 ```powershell
-# 1. Install (one-time setup)
+# 1. One-time setup: build Inspector and register the Windows Service
 .\Inspector.ps1 -Install
 
-# 2. Start monitoring
+# 2. Start watching (auto-starts at future boots until -Deactivate)
 .\Inspector.ps1 -Activate
 
-# 3. Generate report whenever you want
+# 3. When something flashes: console summary + HTML report
 .\Inspector.ps1 -Report
 ```
 
-That's it! The HTML report opens automatically in your browser.
+The HTML report opens automatically in your browser. Prefer double-clicking?
+Run `Install-Inspector.bat` as administrator — same install flow, with
+prerequisite checks (admin rights, .NET SDK, execution policy, Sysmon).
+
+## Requirements
+
+- **Windows 10/11** (or Server 2016+) · **PowerShell 5.1+** · **Administrator session**
+- **.NET 8 SDK** — `-Install` builds the service and report from source
+  ([download](https://dotnet.microsoft.com/download/dotnet/8.0))
+- **Sysmon** — the process-event source Inspector consumes
+  ([download](https://learn.microsoft.com/sysinternals/downloads/sysmon))
+
+Release archives include prebuilt `InspectorService`/`InspectorReport`
+binaries and a `.sha256` checksum — verify downloads with
+`Get-FileHash -Algorithm SHA256 Inspector-v2.zip`.
 
 ---
 
-## 📸 Screenshots
+## Installation
 
-### Console Report Summary
-```
-┌─────────────────────────────────────────────────────────┐
-│                        Summary                          │
-│                                                         │
-│   12           2              3             7           │
-│   captured     investigate    unknown       benign     │
-└─────────────────────────────────────────────────────────┘
-```
-
-### HTML Report (Interactive)
-- ✅ **Risk-flagged events** with detailed command lines
-- 📊 **Timeline view** grouped by date
-- 🔍 **Autostart inventory** (Registry, Tasks, WMI)
-- 🤖 **AI Security Analysis** — one-click prompt to analyze with ChatGPT/Claude
-- 🔎 **Search & filter** — find specific processes instantly
-
----
-
-## 🎓 What Makes Inspector Special?
-
-| Feature | Inspector | Task Manager | Process Monitor |
-|---------|-----------|--------------|-----------------|
-| **Captures flash processes** (< 1 sec) | ✅ | ❌ | ⚠️ (if you're watching) |
-| **Runs in background** | ✅ | ❌ | ❌ |
-| **Correlates with autostart** | ✅ | ❌ | ❌ |
-| **HTML report with timeline** | ✅ | ❌ | ⚠️ (CSV only) |
-| **Zero CPU when idle** | ✅ | N/A | ❌ |
-| **AI-assisted analysis** | ✅ | ❌ | ❌ |
-
----
-
-## 📋 Requirements
-
-- **Windows 10/11** (or Server 2016+)
-- **.NET 8 Runtime** ([download](https://dotnet.microsoft.com/download/dotnet/8.0))
-- **Sysmon** ([download](https://learn.microsoft.com/sysinternals/downloads/sysmon))
-- **PowerShell 5.1+** (built into Windows)
-- **Administrator privileges** (for service installation)
-
-> 💡 **Don't have Sysmon?** Run `.\Inspector.ps1 -Install` and it will guide you through setup.
-
----
-
-## 🔧 Installation
-
-### Step 1: Install Sysmon (if not already installed)
+**1. Install Sysmon (once per machine)** — Inspector ships a tuned config
+(process create + terminate only, common Windows noise filtered out):
 
 ```powershell
-# Download Sysmon from Microsoft Sysinternals
-# https://learn.microsoft.com/sysinternals/downloads/sysmon
+.\Sysmon64.exe -accepteula -i sysmon-config.xml
 
-# Install with default config
+# Or Sysmon's own defaults
 .\Sysmon64.exe -accepteula -i
 ```
 
-**OR** use Inspector's built-in helper:
+Download Sysmon from https://learn.microsoft.com/sysinternals/downloads/sysmon
+
+**2. Install Inspector:**
 
 ```powershell
 .\Inspector.ps1 -Install
-# It will detect if Sysmon is missing and guide you
 ```
 
-### Step 2: Install Inspector Service
+Checks for Sysmon first (stops with the download link if no `Sysmon*` service
+exists), then:
 
-```powershell
-# Clone or download this repo
-cd Inspector-v2
+1. Builds `InspectorService` into `InspectorService\bin\publish`
+2. Builds `InspectorReport`
+3. Registers the `InspectorService` Windows Service (start type *Manual* until
+   you `-Activate`)
+4. Writes a default `config.json` to `C:\ProgramData\Inspector\`
 
-# Run the installer (builds + registers the Windows Service)
-.\Inspector.ps1 -Install
-```
-
-This does 3 things:
-1. Builds `InspectorService.exe` (the background watcher)
-2. Builds `InspectorReport.exe` (the HTML report generator)
-3. Registers InspectorService as a Windows Service
-
-### Step 3: Activate Monitoring
+**3. Activate monitoring:**
 
 ```powershell
 .\Inspector.ps1 -Activate
 ```
 
-Now Inspector is running 24/7, capturing suspicious startup activity in real-time.
+The service starts now and auto-starts at every future boot until you `-Deactivate`.
 
 ---
 
-## 📖 Usage
+## Usage
 
-### Generate Report
+### Generate a report
 
 ```powershell
-# Full report (console summary + interactive HTML)
+# Console summary + interactive HTML report (opens in browser)
 .\Inspector.ps1 -Report
 
-# Report without opening browser
+# Don't open the browser
 .\Inspector.ps1 -Report -NoOpen
 
-# Filter by time
-.\Inspector.ps1 -Report -Since "24h"      # Last 24 hours
-.\Inspector.ps1 -Report -Since "7d"       # Last 7 days
-.\Inspector.ps1 -Report -Since "2024-01-01"  # Since specific date
+# Time filter: last 24 hours / last 7 days / since a date
+.\Inspector.ps1 -Report -Since "24h"
+.\Inspector.ps1 -Report -Since "7d"
+.\Inspector.ps1 -Report -Since "2024-01-01"
 
-# Export to JSON/CSV
+# Export instead of (or alongside) the HTML report
 .\Inspector.ps1 -Report -Export report.json
 .\Inspector.ps1 -Report -Export report.csv -Format csv
 
-# Only flash processes (lifetime < 5 seconds)
+# Only flash processes (lifetime under 5 seconds)
 .\Inspector.ps1 -Report -FlashOnly
 
-# Quiet mode - single line of counts, for scripts
+# One machine-readable line for scripts:
+#   captured=12;investigate=3;autostart=41
 .\Inspector.ps1 -Report -Quiet
 
-# Save current autostart as baseline, then diff later
+# Autostart baseline: save now, diff later
 .\Inspector.ps1 -Report -CompareSave
 .\Inspector.ps1 -Report -Compare
 ```
 
-### Check Status
+`-Compare` writes a `compare_*.html` diff (added/removed/changed startup
+entries) next to the saved baseline, both in `C:\ProgramData\Inspector\`.
+
+### Check status
 
 ```powershell
 .\Inspector.ps1 -Status
 ```
 
-Shows:
-- Service state (Running / Stopped)
-- Startup type (Automatic / Manual)
-- Log file size and last update
-- Configuration summary
+Shows service state, start type, log directory, capture size and last update,
+archived logs, retention period, and configured target count.
 
-### Stop Monitoring (Free Memory)
+### Stop monitoring
 
 ```powershell
 .\Inspector.ps1 -Deactivate
 ```
 
-Service stops, captured data is preserved. Won't auto-start at next boot until you `-Activate` again.
+Stops the service (no process is running afterwards) and sets its start type
+back to *Manual*. Captured data stays where it is; nothing auto-starts at the
+next boot until you `-Activate` again.
 
-### Cleanup Old Logs
+### Clean old logs
 
 ```powershell
 .\Inspector.ps1 -Clean
 ```
 
-Removes logs older than your configured retention period (default: 30 days).
+Deletes archived `capture_*.jsonl` files older than your configured
+`RetentionDays` (default: 30) and prunes old HTML reports, keeping the 10
+newest.
 
 ### Uninstall
 
@@ -194,20 +216,25 @@ Removes logs older than your configured retention period (default: 30 days).
 .\Inspector.ps1 -Uninstall
 ```
 
-Removes the Windows Service. Logs remain at `C:\ProgramData\Inspector` unless you delete them manually.
+Removes the Windows Service. Captured logs remain at `C:\ProgramData\Inspector`
+until you delete them manually (see Privacy below).
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
-Config file: `C:\ProgramData\Inspector\config.json`
+Config file: `C:\ProgramData\Inspector\config.json` (created by `-Install`)
 
 ```json
 {
   "LogDirectory": "C:\\ProgramData\\Inspector",
   "TargetImages": [
     "powershell.exe",
+    "powershell_ise.exe",
+    "pwsh.exe",
+    "pwsh.dll",
     "cmd.exe",
+    "conhost.exe",
     "wscript.exe",
     "cscript.exe",
     "mshta.exe",
@@ -219,16 +246,20 @@ Config file: `C:\ProgramData\Inspector\config.json`
   ],
   "MaxLogSizeMB": 50,
   "RetentionDays": 30,
-  "AutoStart": true
+  "AutoStart": true,
+  "EnableNetworkTracking": false,
+  "EnableFileTracking": false
 }
 ```
 
-**Key settings:**
-- `TargetImages` — Process names to monitor (add `.exe` files you want to track)
-- `MaxLogSizeMB` — Log rotation threshold (default: 50 MB)
-- `RetentionDays` — Auto-delete logs older than X days
+**Key settings:** `TargetImages` (executables to watch — add any `.exe` and
+restart the service), `MaxLogSizeMB` (rotation threshold, default 50),
+`RetentionDays` (archive lifetime for `-Clean`, default 30). `AutoStart`,
+`EnableNetworkTracking`, and `EnableFileTracking` are reserved and currently
+unused — start/stop is controlled by `-Activate`/`-Deactivate`.
 
-Edit the config, then restart the service:
+After editing, restart the service:
+
 ```powershell
 .\Inspector.ps1 -Deactivate
 .\Inspector.ps1 -Activate
@@ -236,185 +267,128 @@ Edit the config, then restart the service:
 
 ---
 
-## 🧠 AI Security Analysis
+## AI-Assisted Investigation
 
-Inspector reports include a **one-click AI analysis feature**.
-
-**How it works - and what leaves your machine:** the report builds the analysis
-prompt **locally in your browser** and copies it to your clipboard. Inspector
-itself makes no network requests and never sends data to any AI provider.
-Your data only leaves your machine if *you* choose to upload the HTML file or
-paste the prompt into an AI service.
+Every HTML report includes a **Copy Analysis Prompt** button. The prompt is
+built **entirely in your browser** and copied to your clipboard — Inspector
+makes no network requests and never sends anything to an AI provider.
 
 1. Click **"Copy Analysis Prompt"** in the HTML report
-2. Upload the HTML file to ChatGPT, Claude, or any AI assistant
-3. Paste the prompt
-4. Get a comprehensive security assessment in plain English
+2. Optionally upload the HTML file to ChatGPT, Claude, or any AI assistant
+3. Paste the prompt and get a plain-English read of the captured activity
 
-The AI explains:
-- ✅ What's safe (don't worry about this)
-- ⚠️ What needs investigation (check these)
-- 🚨 What's dangerous (fix NOW)
-- 📝 Step-by-step remediation guide
+Your data leaves your machine only if *you* choose to share it. Treat AI
+output as an opinion to verify, not a verdict.
 
 ---
 
-## 🔒 Privacy & Data Collection
+## Privacy & Local-First Design
 
 **What is collected** (while the service is active):
-- Sysmon process-create / process-terminate events for the watched executables
-  (PowerShell, CMD, script hosts, and common LOLBins): image path, full command
-  line, PID, user, integrity level, parent process, file hashes, signer/company,
-  and timestamps
-- A local inventory of autostart entries (registry Run keys, Startup folders,
-  scheduled tasks, WMI subscriptions, Winlogon values, services) for correlation
 
-**Where it is stored:** `C:\ProgramData\Inspector\` on your machine -
-`capture.jsonl` (raw events), generated HTML reports, snapshots, and
+- Sysmon process-create / process-terminate events for the watched executables
+  (PowerShell, CMD, script hosts, LOLBins): image path, command line, current
+  directory, PID, user, integrity level, parent process, file hashes,
+  publisher/signature status, version metadata, timestamps
+- A local inventory of autostart entries (Run keys, Startup folders, scheduled
+  tasks, WMI subscriptions, Winlogon, services, AppInit DLLs, add-ins)
+
+**Where it is stored:** `C:\ProgramData\Inspector\` on your machine —
+`capture.jsonl` (raw events), generated HTML reports, snapshots/baselines, and
 `config.json`. Nothing is written anywhere else.
 
-**Does it leave your machine?** **No.** Inspector contains no network code -
-no telemetry, no phone-home, no update checks, no external API calls. Reports
-and AI prompts are generated entirely locally. Data can leave your machine only
-if *you* manually share a report file or paste a prompt into a third-party
+**Does it leave your machine? No.** Inspector contains no network code — no
+telemetry, no phone-home, no update checks, no external API calls. Reports and
+AI prompts are generated entirely locally. Data can leave your machine only if
+*you* manually share a report file or paste a prompt into a third-party
 service.
 
+**Treat captures as sensitive:** command lines can contain paths and secrets
+that appeared on screen — review reports before sharing them.
+
 **How to delete everything:**
+
 ```powershell
 .\Inspector.ps1 -Uninstall                              # remove the Windows Service
 Remove-Item C:\ProgramData\Inspector -Recurse -Force    # delete all captures and reports
 ```
+
 To remove old logs only, run `.\Inspector.ps1 -Clean`.
 
 ---
-## 🛠️ Troubleshooting
 
-### "Sysmon service not found"
-Install Sysmon first:
+## Troubleshooting
+
+**"Sysmon service not found"** — install Sysmon first:
+
 ```powershell
-# Download from https://learn.microsoft.com/sysinternals/downloads/sysmon
-.\Sysmon64.exe -accepteula -i
+.\Sysmon64.exe -accepteula -i sysmon-config.xml
 ```
 
-### "No captures yet"
-Make sure:
-1. Sysmon is running: `Get-Service Sysmon64` (or `Sysmon`)
-2. Inspector service is running: `Get-Service InspectorService`
-3. Wait for a process to actually launch (reboot or open PowerShell manually)
+**"No captures yet"** — check that Sysmon is running
+(`Get-Service Sysmon64`), check `.\Inspector.ps1 -Status`, then make sure a
+watched process actually launched (reboot or open PowerShell manually) and
+re-run `.\Inspector.ps1 -Report`.
 
-### "Script execution policy blocked"
-Run once (as Administrator):
+**"PowerShell execution policy is blocking this script"** — run once, as
+Administrator:
+
 ```powershell
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
-### Inspector not capturing certain processes
-Edit `C:\ProgramData\Inspector\config.json` and add the process name to `TargetImages`, then restart:
-```powershell
-.\Inspector.ps1 -Deactivate
-.\Inspector.ps1 -Activate
-```
+**"InspectorReport isn't built yet"** — run `.\Inspector.ps1 -Install` first.
+
+**Not capturing a process you expect** — add its name to `TargetImages` in
+`C:\ProgramData\Inspector\config.json`, then `-Deactivate` and `-Activate`.
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  User runs: .\Inspector.ps1 -Report                     │
-└────────────────────┬────────────────────────────────────┘
-                     │
-         ┌───────────▼──────────────┐
-         │   InspectorReport.exe    │
-         │   (reads capture.jsonl)  │
-         │   (scans autostart)      │
-         │   (generates HTML)       │
-         └───────────▲──────────────┘
-                     │
-                     │ reads
-                     │
-         ┌───────────┴──────────────┐
-         │  C:\ProgramData\         │
-         │    Inspector\            │
-         │      capture.jsonl       │◄────┐
-         └──────────────────────────┘     │
-                                          │ writes
-                                          │
-                     ┌────────────────────┴─────┐
-                     │  InspectorService.exe    │
-                     │  (Windows Service)       │
-                     │  - EventLogWatcher       │
-                     │  - Real-time monitoring  │
-                     └────────────▲─────────────┘
-                                  │ reads events
-                                  │
-                     ┌────────────┴─────────────┐
-                     │  Sysmon                  │
-                     │  (Microsoft-Windows-     │
-                     │   Sysmon/Operational)    │
-                     └──────────────────────────┘
+Sysmon (Event IDs 1 & 5, Microsoft-Windows-Sysmon/Operational)
+      │  real-time events
+      ▼
+InspectorService.exe (Windows Service)
+      │  writes one JSON line per event
+      ▼
+C:\ProgramData\Inspector\capture.jsonl   (+ config.json, reports, snapshots)
+      ▲  reads
+      │
+InspectorReport.exe  (launched by .\Inspector.ps1 -Report)
+      │  scans autostart, scores, correlates
+      ▼
+console summary + interactive HTML report (written and opened locally)
 ```
 
-Full details on data sources, scoring heuristics, and output formats: [ARCHITECTURE.md](ARCHITECTURE.md).
+**Components:** **InspectorService** consumes Sysmon events and appends JSON
+lines to `capture.jsonl` (rotating/pruning); **InspectorReport** merges
+captures, scans autostart, scores, and exports HTML/JSON/CSV; **Inspector.ps1**
+installs, activates, reports, cleans, and uninstalls.
 
-Tests: `Invoke-Pester -Script .\tests\Inspector.Tests.ps1`
-
-**Key components:**
-- **InspectorService** (background): Watches Sysmon event log in real-time, writes JSON lines to `capture.jsonl`
-- **InspectorReport** (on-demand): Reads `capture.jsonl`, scans autostart locations, generates HTML report
-- **Inspector.ps1** (control script): Installs, starts, stops, and generates reports
-
----
-
-## 🤝 Contributing
-
-Contributions welcome! Priority improvements:
-
-**High Priority:**
-- [ ] Portable installer (`.exe` with Sysmon bundled)
-- [ ] More screenshots/GIFs in README
-- [x] Inline remediation suggestions in HTML report
-- [ ] Pre-built Sysmon config
-
-**Medium Priority:**
-- [x] Parent process chain visualization
-- [x] Signed/unsigned executable detection
-- [ ] Optional VirusTotal hash lookup
-- [x] Filter "flash processes only" mode
-
-**Low Priority:**
-- [ ] WinUI / Avalonia GUI
-- [ ] GitHub Actions auto-releases
+Full details: [ARCHITECTURE.md](ARCHITECTURE.md). Tests:
+`Invoke-Pester -Script .\tests\Inspector.Tests.ps1` (Windows PowerShell 5.1,
+in-box Pester 3.4).
 
 ---
 
-## 📜 License
+## Contributing
 
-MIT License - see [LICENSE](LICENSE) file for details.
+Issues and pull requests are welcome. For larger changes, open an issue first.
+Build/test steps and PR expectations: [CONTRIBUTING.md](CONTRIBUTING.md).
+Please preserve what makes this tool trustworthy: local-only operation, no
+telemetry, no unnecessary dependencies, and honest documentation.
 
----
+## Security
 
-## 🙏 Credits
+Found a security issue? Please report it **privately** — see
+[SECURITY.md](SECURITY.md). Do not open a public issue for vulnerabilities.
 
-- **Sysmon** by Microsoft Sysinternals (Mark Russinovich)
-- **Spectre.Console** for beautiful terminal UI
-- Built with ❤️ and .NET 8
+## License
 
----
+MIT License — see [LICENSE](LICENSE).
 
-## ⭐ Star This Repo
-
-If Inspector helped you catch something suspicious, give it a star! ⭐
-
-It helps others discover the tool and motivates continued development.
-
----
-
-## 📞 Support
-
-- 🐛 **Bug reports**: [Open an issue](../../issues)
-- 💡 **Feature requests**: [Open an issue](../../issues)
-- 📖 **Documentation**: This README + inline code comments
-- 💬 **Questions**: [Discussions](../../discussions)
-#   I n s p e c t o r  
- 
+**Credits:** [Sysmon](https://learn.microsoft.com/sysinternals/downloads/sysmon)
+by Microsoft Sysinternals (Inspector is not affiliated with Microsoft) ·
+**Spectre.Console** for the terminal UI · built with .NET 8.

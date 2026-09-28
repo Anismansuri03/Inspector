@@ -21,10 +21,10 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
 
@@ -66,13 +66,13 @@ jobs:
           exit 0
 
       - name: Upload InspectorService artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: InspectorService
           path: InspectorService/bin/publish/
 
       - name: Upload InspectorReport artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: InspectorReport
           path: InspectorReport/bin/Release/net8.0-windows/
@@ -86,10 +86,10 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
 
@@ -110,8 +110,16 @@ jobs:
             README.md `
             LICENSE
 
+      - name: Generate SHA-256 checksum
+        shell: powershell
+        run: |
+          $hash = (Get-FileHash -Path Inspector-v2.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  Inspector-v2.zip" | Out-File -FilePath Inspector-v2.zip.sha256 -Encoding ascii
+
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
-          files: Inspector-v2.zip
+          files: |
+            Inspector-v2.zip
+            Inspector-v2.zip.sha256
           generate_release_notes: true
