@@ -1,7 +1,7 @@
 # 🛡️ Inspector
 
 **What was that command window that just flashed and disappeared?**
-<img src="https://i.ibb.co/jPH9GcFD/ezgif-392a8bdcb9456d1b-ezgif-com-optimize-1.gif" width="400" alt="sus" />
+<img src="https://i.ibb.co/FqdJ3n4J/ezgif-392a8bdcb9456d1b-ezgif-com-cut.gif" width="500" alt="sus" />
 
 Inspector is a local-only Windows investigation tool for short-lived processes —
 the popups you never get a chance to read. A background Windows Service records
