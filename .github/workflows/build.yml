@@ -29,10 +29,17 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Restore dependencies
+        # InspectorService is published with -r win-x64 + --no-restore, so its
+        # restore must be runtime-aware (-r win-x64) or project.assets.json will
+        # lack the net8.0-windows/win-x64 target (NETSDK1047). PublishReadyToRun
+        # must be set at restore time too, otherwise the R2R runtime pack is not
+        # restored (NETSDK1094). It runs last so the transitively restored
+        # Inspector.Common assets also keep that target when publish builds it
+        # under --no-restore.
         run: |
           dotnet restore Inspector.Common/Inspector.Common.csproj
-          dotnet restore InspectorService/InspectorService.csproj
           dotnet restore InspectorReport/InspectorReport.csproj
+          dotnet restore InspectorService/InspectorService.csproj -r win-x64 -p:PublishReadyToRun=true
 
       - name: Build Inspector.Common
         run: dotnet build Inspector.Common/Inspector.Common.csproj -c Release --no-restore
