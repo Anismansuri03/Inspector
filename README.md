@@ -1,12 +1,12 @@
 # 🛡️ Inspector
 
 **What was that command window that just flashed and disappeared?**
-<img src="https://i.ibb.co/21NZwcHq/ezgif-392a8bdcb9456d1b.gif" width="400" alt="sus" />
+<img src="https://i.ibb.co/jPH9GcFD/ezgif-392a8bdcb9456d1b-ezgif-com-optimize-1.gif" width="400" alt="sus" />
 
 Inspector is a local-only Windows investigation tool for short-lived processes —
 the popups you never get a chance to read. A background Windows Service records
 Sysmon process events (command line, parent process, hashes, lifetime),
-correlates them with autostart entries, and turns the capture into a console
+correlates them with autostart entries, and turns the capture into a consoled
 summary and an interactive HTML report with heuristic risk scoring.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg) ![.NET](https://img.shields.io/badge/.NET-8.0-purple.svg) ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg) ![Version](https://img.shields.io/badge/version-v2.0.0-orange.svg) ![Build & Release](https://github.com/Anismansuri03/Inspector/actions/workflows/build.yml/badge.svg?branch=main)
@@ -25,8 +25,8 @@ summary and an interactive HTML report with heuristic risk scoring.
 <table>
   <tr>
     <td align="center" width="900">
-      <strong>Screenshot incoming</strong><br>
-      <code>docs/screenshots/inspector-report.png</code>
+      <strong>Screenshot</strong><br>
+<img src="https://i.ibb.co/DDQ455NP/image.png" width="" alt="sus" />
     </td>
   </tr>
 </table>
