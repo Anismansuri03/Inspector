@@ -20,6 +20,8 @@
     .\Inspector.ps1 -Report -Since "24h"              # only show last 24 hours
     .\Inspector.ps1 -Report -Since "2024-01-01"       # only show since date
     .\Inspector.ps1 -Report -FlashOnly                # show only flash processes (< 5s lifetime)
+    .\Inspector.ps1 -Report -CompareSave              # save current autostart as baseline
+    .\Inspector.ps1 -Report -Compare                  # diff current vs saved baseline
 #>
 
 param(
@@ -34,7 +36,10 @@ param(
     [string]$Format = "json",
     [string]$Since = "",
     [switch]$NoOpen,
-    [switch]$FlashOnly
+    [switch]$FlashOnly,
+    [switch]$CompareSave,
+    [switch]$Compare,
+    [switch]$Quiet
 )
 
 # --- Execution Policy Check ---
@@ -210,6 +215,9 @@ function Invoke-Report {
         $reportArgs += "--since"
         $reportArgs += $Since
     }
+    if ($CompareSave) { $reportArgs += "--compare-save" }
+    if ($Compare -and -not $CompareSave) { $reportArgs += "--compare-show" }
+    if ($Quiet) { $reportArgs += "--quiet" }
 
     & $ReportExe @reportArgs
 }
@@ -303,4 +311,7 @@ else {
     Write-Host "  -Format csv       Use CSV format (default: json)"
     Write-Host "  -Since <time>     Filter by time (e.g., '24h', '7d', '2024-01-01')"
     Write-Host "  -FlashOnly        Show only flash processes (< 5 seconds lifetime)"
+    Write-Host "  -CompareSave      Save current autostart as baseline"
+    Write-Host "  -Compare          Diff current vs saved baseline"
+    Write-Host "  -Quiet            Suppress console output"
 }

@@ -61,7 +61,7 @@ if %errorLevel% NEQ 0 (
     echo [WARNING] Sysmon is not installed.
     echo.
     echo Sysmon is required for Inspector to work. It provides kernel-level
-    echo process monitoring that cannot be evaded by malware.
+    echo process monitoring for process creation and termination events.
     echo.
     echo Options:
     echo   1. Download Sysmon from:

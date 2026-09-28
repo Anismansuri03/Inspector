@@ -32,6 +32,7 @@ public static class HtmlReportBuilder
             .OrderByDescending(g => g.Count())
             .FirstOrDefault();
         string busiestHourStr = busiestHour != null ? $"{busiestHour.Key:00}:00 - {busiestHour.Key:00}:59" : "N/A";
+        string busiestFilter = busiestHour != null ? $"hour:{busiestHour.Key}" : "all";
 
         var sb = new StringBuilder();
         sb.Append("""
@@ -69,6 +70,28 @@ public static class HtmlReportBuilder
           .stat .l { color: var(--muted); font-size: 12px; margin-top:6px; text-transform:uppercase; letter-spacing:.04em; }
           .stat.warn .n { color: var(--red); }
           .stat.ok .n { color: var(--green); }
+
+          .stat, .freq-stat, .risk-box {
+            cursor: pointer; user-select: none;
+            transition: border-color .15s, transform .15s, box-shadow .15s;
+          }
+          .stat:hover, .freq-stat:hover, .risk-box:hover {
+            border-color: var(--accent); transform: translateY(-1px);
+          }
+          .stat.active, .freq-stat.active, .risk-box.active {
+            border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent);
+          }
+          .filter-chip {
+            display:none; align-items:center; gap:10px; margin:-8px 0 16px;
+            padding:8px 12px; border-radius:8px; background:var(--panel);
+            border:1px solid var(--accent); color:var(--text); font-size:13px; width:fit-content;
+          }
+          .filter-chip.visible { display:inline-flex; }
+          .filter-chip .clear {
+            background:none; border:none; color:var(--muted); cursor:pointer;
+            font-size:14px; line-height:1; padding:2px 6px;
+          }
+          .filter-chip .clear:hover { color:var(--text); }
 
           .freq-stats { display:grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 0 0 26px; }
           .freq-stat { background: var(--panel); border:1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
@@ -290,6 +313,30 @@ public static class HtmlReportBuilder
 
           .section-title { font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin: 22px 0 10px; }
           .section-title:first-child { margin-top:0; }
+
+          .score-chip {
+            display:inline-flex; align-items:center; justify-content:center;
+            min-width:34px; height:22px; padding:0 7px; border-radius:6px;
+            font-size:12px; font-weight:700; font-family:Consolas,monospace; flex-shrink:0;
+          }
+          .score-low { background:var(--green-bg); color:var(--green); border:1px solid var(--green-bd); }
+          .score-medium { background:var(--amber-bg); color:var(--amber); border:1px solid var(--amber-bd); }
+          .score-high { background:var(--red-bg); color:var(--red); border:1px solid var(--red-bd); }
+
+          .risk-breakdown { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:0 0 26px; }
+          .risk-box { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px 16px; }
+          .risk-box .n { font-size:24px; font-weight:700; }
+          .risk-box .l { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.04em; margin-top:4px; }
+          .risk-box.high .n { color:var(--red); }
+          .risk-box.medium .n { color:var(--amber); }
+          .risk-box.low .n { color:var(--green); }
+
+          .reasons { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+          .reason {
+            font-size:11.5px; padding:3px 9px; border-radius:999px;
+            background:var(--panel-2); border:1px solid var(--border); color:var(--muted);
+          }
+          @media (max-width:720px){ .risk-breakdown{ grid-template-columns:1fr; } }
         </style></head><body><div class="wrap">
         """);
 
@@ -320,26 +367,36 @@ public static class HtmlReportBuilder
         </div>
 
         <div class="stats">
-          <div class="stat"><div class="n">{events.Count}</div><div class="l">Processes captured</div></div>
-          <div class="stat {(flaggedCount > 0 ? "warn" : "")}"><div class="n">{flaggedCount}</div><div class="l">Flagged to investigate</div></div>
-          <div class="stat ok"><div class="n">{benignCount}</div><div class="l">Confirmed benign</div></div>
-          <div class="stat {(autostartFlagged > 0 ? "warn" : "")}"><div class="n">{autostart.Count}</div><div class="l">Autostart entries scanned</div></div>
+          <div class="stat" data-filter="all" onclick="applyStatFilter(this)" title="Show all processes">
+            <div class="n">{events.Count}</div><div class="l">Processes captured</div>
+          </div>
+          <div class="stat {(flaggedCount > 0 ? "warn" : "")}" data-filter="investigate" onclick="applyStatFilter(this)" title="Show flagged processes">
+            <div class="n">{flaggedCount}</div><div class="l">Flagged to investigate</div>
+          </div>
+          <div class="stat ok" data-filter="benign" onclick="applyStatFilter(this)" title="Show benign processes">
+            <div class="n">{benignCount}</div><div class="l">Confirmed benign</div>
+          </div>
+          <div class="stat {(autostartFlagged > 0 ? "warn" : "")}" data-filter="tab:autostart" onclick="applyStatFilter(this)" title="Show autostart inventory">
+            <div class="n">{autostart.Count}</div><div class="l">Autostart entries scanned</div>
+          </div>
         </div>
 
         <div class="freq-stats">
-          <div class="freq-stat">
+          <div class="freq-stat" data-filter="all" onclick="applyStatFilter(this)" title="Show all processes">
             <div class="label">Active days</div>
             <div class="value">{totalDays}</div>
           </div>
-          <div class="freq-stat">
+          <div class="freq-stat" data-filter="all" onclick="applyStatFilter(this)" title="Show all processes">
             <div class="label">Avg captures / day</div>
             <div class="value">{avgPerDay:F1}</div>
           </div>
-          <div class="freq-stat">
+          <div class="freq-stat" data-filter="{busiestFilter}" onclick="applyStatFilter(this)" title="Show processes from this hour">
             <div class="label">Busiest hour</div>
             <div class="value">{busiestHourStr}</div>
           </div>
         </div>
+
+        {RenderRiskBreakdown(events, autostart)}
 
         <div class="ai-section">
           <div class="ai-header">
@@ -380,6 +437,10 @@ public static class HtmlReportBuilder
         </div>
 
         <input id="search" placeholder="Filter by process, command line, user..." oninput="filterCards()">
+        <div id="filter-chip" class="filter-chip">
+          <span id="filter-chip-text"></span>
+          <button class="clear" onclick="clearStatFilter()" title="Clear filter">&#10005;</button>
+        </div>
         """);
 
         // ---- Captures tab ----
@@ -421,7 +482,7 @@ public static class HtmlReportBuilder
                     string procName = HtmlEncode(Path.GetFileName(c.Image));
 
                     sb.Append($"""
-                    <details class="card" data-search="{searchBlob}">
+                    <details class="card" data-search="{searchBlob}" data-risk="{ev.RiskLevel}" data-detailed="{ev.RiskLevelDetailed}" data-hour="{c.TimeUtc.ToLocalTime().Hour}">
                       <summary class="row">
                         <span class="chev">&#9656;</span>
                         <span class="badge {badgeClass}">{icon} {badgeText}</span>
@@ -475,23 +536,33 @@ public static class HtmlReportBuilder
         foreach (var group in groups)
         {
             sb.Append($"<div class='section-title'>{HtmlEncode(group.Key)}</div>");
-            foreach (var a in group.OrderByDescending(x => !x.KnownBenign))
+            foreach (var a in group.OrderByDescending(x => x.RiskScore))
             {
-                string badgeClass = a.KnownBenign ? "badge-benign" : "badge-unknown";
-                string badgeText = a.KnownBenign ? "benign" : "check this";
-                string icon = a.KnownBenign ? "&#9989;" : "&#128269;";
+                string badgeClass = a.KnownBenign ? "badge-benign" : (a.RiskLevel == "high" ? "badge-investigate" : (a.RiskLevel == "medium" ? "badge-unknown" : "badge-benign"));
+                string badgeText = a.KnownBenign ? "benign" : (a.RiskLevel == "high" ? "INVESTIGATE" : (a.RiskLevel == "medium" ? "medium risk" : "low risk"));
+                string icon = a.KnownBenign ? "&#9989;" : (a.RiskLevel == "high" ? "&#9888;&#65039;" : "&#10067;");
+                string riskScore = $"{a.RiskScore}/100";
+                string searchBlob = HtmlEncode($"{a.Name} {a.Command} {a.Source}").ToLowerInvariant();
+
+                var factorsHtml = a.RiskFactors?.Any() == true
+                    ? "<div class='field-label'>Risk factors</div><div class='mono'>" + string.Join("<br/>", a.RiskFactors.Select(f => HtmlEncode(f))) + "</div>"
+                    : "";
+
                 sb.Append($"""
-                <details class="card">
+                <details class="card" data-search="{searchBlob}">
                   <summary class="row">
                     <span class="chev">&#9656;</span>
                     <span class="badge {badgeClass}">{icon} {badgeText}</span>
                     <div class="row-main">
                       <div class="row-title">{HtmlEncode(a.Name)}</div>
+                      <div class="row-sub">Risk: {riskScore}{(a.FileHash != null ? " - SHA256: " + HtmlEncode(a.FileHash.Substring(0, Math.Min(16, a.FileHash.Length)) + "...") : "")}</div>
                     </div>
+                    <div class="row-time" style="font-size:11px;">{HtmlEncode(a.Source)}</div>
                   </summary>
                   <div class="body">
                     <div class="field-label">Full command / definition</div>
                     <div class="mono">{CopyBtn()}{HtmlEncode(a.Command)}</div>
+                    {factorsHtml}
                   </div>
                 </details>
                 """);
@@ -502,16 +573,82 @@ public static class HtmlReportBuilder
         sb.Append("""
         </div>
         <script>
+        var statFilter = null;
+
         function showTab(id) {
-          document.querySelectorAll('.panel-view').forEach(p => p.classList.remove('active'));
-          document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-          document.getElementById(id).classList.add('active');
-          event.target.classList.add('active');
+          document.querySelectorAll('.panel-view').forEach(p => p.classList.toggle('active', p.id === id));
+          document.querySelectorAll('.tab').forEach(t => {
+            var m = (t.getAttribute('onclick') || '').indexOf("'" + id + "'");
+            t.classList.toggle('active', m !== -1);
+          });
         }
+
+        function applyStatFilter(el) {
+          var f = el.getAttribute('data-filter');
+          if (!f) return;
+          if (f.indexOf('tab:') === 0) {
+            showTab(f.slice(4));
+            return;
+          }
+          showTab('captures');
+          statFilter = (statFilter === f) ? null : f;
+          document.querySelectorAll('[data-filter]').forEach(s => s.classList.remove('active'));
+          if (statFilter) el.classList.add('active');
+          updateFilterChip();
+          filterCards();
+        }
+
+        function clearStatFilter() {
+          statFilter = null;
+          document.querySelectorAll('[data-filter]').forEach(s => s.classList.remove('active'));
+          updateFilterChip();
+          filterCards();
+        }
+
+        function updateFilterChip() {
+          var chip = document.getElementById('filter-chip');
+          if (!chip) return;
+          if (!statFilter) { chip.classList.remove('visible'); return; }
+          var labels = {
+            all: 'All processes',
+            investigate: 'Flagged to investigate',
+            benign: 'Confirmed benign',
+            unknown: 'Unrecognized risk',
+            high: 'High interest score',
+            medium: 'Medium interest score',
+            low: 'Likely benign score'
+          };
+          var label = labels[statFilter];
+          if (!label && statFilter.indexOf('hour:') === 0) {
+            var h = statFilter.slice(5);
+            label = 'Busiest hour ' + h + ':00 - ' + h + ':59';
+          }
+          document.getElementById('filter-chip-text').textContent = 'Showing: ' + (label || statFilter);
+          chip.classList.add('visible');
+        }
+
         function filterCards(){
           const q = document.getElementById('search').value.toLowerCase();
           document.querySelectorAll('#captures .card').forEach(c => {
-            c.style.display = (c.dataset.search || '').includes(q) ? '' : 'none';
+            var textOk = (c.dataset.search || '').includes(q);
+            var statOk = true;
+            if (statFilter) {
+              if (statFilter === 'investigate' || statFilter === 'benign' || statFilter === 'unknown')
+                statOk = c.dataset.risk === statFilter;
+              else if (statFilter === 'high' || statFilter === 'medium' || statFilter === 'low')
+                statOk = c.dataset.detailed === statFilter;
+              else if (statFilter.indexOf('hour:') === 0)
+                statOk = c.dataset.hour === statFilter.slice(5);
+            }
+            c.style.display = (textOk && statOk) ? '' : 'none';
+          });
+          document.querySelectorAll('#captures .date-header').forEach(h => {
+            var any = false, n = h.nextElementSibling;
+            while (n && !n.classList.contains('date-header')) {
+              if (n.classList.contains('card') && n.style.display !== 'none') { any = true; break; }
+              n = n.nextElementSibling;
+            }
+            h.style.display = any ? '' : 'none';
           });
         }
         function copyText(btn){
@@ -666,6 +803,33 @@ public static class HtmlReportBuilder
     }
 
     private static string CopyBtn() => "<span class=\"copy-btn\" onclick=\"copyText(this)\">Copy</span>";
+
+    private static string RenderRiskBreakdown(List<MergedEvent> events, List<AutostartEntry> autostart)
+    {
+        int procHigh = events.Count(e => e.RiskLevelDetailed == "high");
+        int procMed = events.Count(e => e.RiskLevelDetailed == "medium");
+        int procLow = events.Count(e => e.RiskLevelDetailed == "low");
+        int autoHigh = autostart.Count(a => a.RiskLevel == "high" && !a.KnownBenign);
+        int autoMed = autostart.Count(a => a.RiskLevel == "medium" && !a.KnownBenign);
+        int autoLow = autostart.Count(a => a.RiskLevel == "low");
+
+        return $"""
+        <div class="risk-breakdown">
+          <div class="risk-box high" data-filter="high" onclick="applyStatFilter(this)" title="Show high-interest processes">
+            <div class="n">{procHigh + autoHigh}</div>
+            <div class="l">High interest</div>
+          </div>
+          <div class="risk-box medium" data-filter="medium" onclick="applyStatFilter(this)" title="Show medium-interest processes">
+            <div class="n">{procMed + autoMed}</div>
+            <div class="l">Medium interest</div>
+          </div>
+          <div class="risk-box low" data-filter="low" onclick="applyStatFilter(this)" title="Show low-interest processes">
+            <div class="n">{procLow + autoLow}</div>
+            <div class="l">Likely benign</div>
+          </div>
+        </div>
+        """;
+    }
 
     private static string ShortTrigger(string trigger)
     {

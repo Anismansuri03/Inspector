@@ -10,6 +10,10 @@ on:
   pull_request:
     branches: [ main ]
 
+# Least privilege by default; the release job elevates only what it needs.
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build All Projects
@@ -25,18 +29,23 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Restore dependencies
-        run: dotnet restore
+        run: |
+          dotnet restore Inspector.Common/Inspector.Common.csproj
+          dotnet restore InspectorService/InspectorService.csproj
+          dotnet restore InspectorReport/InspectorReport.csproj
 
       - name: Build Inspector.Common
         run: dotnet build Inspector.Common/Inspector.Common.csproj -c Release --no-restore
 
-      - name: Build InspectorService (publish as self-contained)
-        run: |
-          dotnet publish InspectorService/InspectorService.csproj -c Release -r win-x64 \
-            --self-contained false -p:PublishReadyToRun=true -o InspectorService\bin\publish
+      - name: Build InspectorService (publish)
+        run: dotnet publish InspectorService/InspectorService.csproj -c Release -r win-x64 --self-contained false -p:PublishReadyToRun=true -o InspectorService/bin/publish --no-restore
 
       - name: Build InspectorReport
         run: dotnet build InspectorReport/InspectorReport.csproj -c Release --no-restore
+
+      - name: Run tests
+        shell: powershell
+        run: Invoke-Pester -Script ./tests/Inspector.Tests.ps1
 
       - name: Upload InspectorService artifact
         uses: actions/upload-artifact@v4
@@ -55,6 +64,8 @@ jobs:
     needs: build
     runs-on: windows-latest
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -65,9 +76,7 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Publish InspectorService
-        run: |
-          dotnet publish InspectorService/InspectorService.csproj -c Release -r win-x64 \
-            --self-contained false -p:PublishReadyToRun=true -o InspectorService\bin\publish
+        run: dotnet publish InspectorService/InspectorService.csproj -c Release -r win-x64 --self-contained false -p:PublishReadyToRun=true -o InspectorService/bin/publish
 
       - name: Build InspectorReport
         run: dotnet build InspectorReport/InspectorReport.csproj -c Release
@@ -75,10 +84,8 @@ jobs:
       - name: Create release archive
         run: |
           7z a Inspector-v2.zip `
-            InspectorService/bin/publish/InspectorService.exe `
-            InspectorService/bin/publish/InspectorService.dll `
-            InspectorReport/bin/Release/net8.0-windows/InspectorReport.exe `
-            InspectorReport/bin/Release/net8.0-windows/InspectorReport.dll `
+            InspectorService/bin/publish `
+            InspectorReport/bin/Release/net8.0-windows `
             Inspector.ps1 `
             Install-Inspector.bat `
             sysmon-config.xml `

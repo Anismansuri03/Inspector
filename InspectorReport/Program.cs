@@ -3,21 +3,125 @@ using Inspector.Common;
 using Inspector.Report;
 using Spectre.Console;
 
-// Parse command line arguments
-var argsObj = new ArgsParser(args);
+var parsed = new ArgsParser(args);
 var config = InspectorConfig.Load();
 
 string logDir = config.LogDirectory;
-string captureFile = config.CaptureFilePath;
 string htmlOut = Path.Combine(logDir, $"report_{DateTime.Now:yyyyMMdd_HHmmss}.html");
-string? exportFile = argsObj.ExportFile;
-DateTime? sinceFilter = argsObj.Since;
-bool flashOnly = argsObj.FlashOnly;
+string baselinePath = Path.Combine(logDir, "baseline.snapshot.json");
+string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
 
-bool openHtml = !argsObj.NoOpen && string.IsNullOrEmpty(exportFile);
+if (!parsed.Quiet)
+{
+    AnsiConsole.Write(new Rule("[bold cyan]Inspector Report[/]").LeftJustified());
+    AnsiConsole.MarkupLine($"[grey]{DateTime.Now:f}[/]\n");
+}
 
-AnsiConsole.Write(new Rule("[bold cyan]Inspector Report[/]").LeftJustified());
-AnsiConsole.MarkupLine($"[grey]{DateTime.Now:f}[/]\n");
+// ---- Compare two snapshot files -------------------------------------------
+if (parsed.CompareBefore != null && parsed.CompareAfter != null)
+{
+    var beforeSnap = SnapshotComparer.Load(parsed.CompareBefore);
+    var afterSnap = SnapshotComparer.Load(parsed.CompareAfter);
+    var diff = SnapshotComparer.Diff(beforeSnap, afterSnap);
+
+    if (!parsed.Quiet)
+    {
+        AnsiConsole.MarkupLine("[bold cyan]Startup comparison[/]");
+        AnsiConsole.MarkupLine($"[grey]before {beforeSnap.TakenUtc:u}  ->  after {afterSnap.TakenUtc:u}[/]");
+        AnsiConsole.WriteLine(SnapshotComparer.RenderConsole(diff));
+    }
+
+    string diffHtml = parsed.CompareOut ?? Path.Combine(logDir, $"compare_{stamp}.html");
+    Directory.CreateDirectory(logDir);
+    File.WriteAllText(diffHtml, SnapshotComparer.RenderHtml(diff));
+    if (!parsed.Quiet)
+    {
+        AnsiConsole.MarkupLine($"\n[grey]Diff HTML:[/] [underline]{diffHtml}[/]");
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(diffHtml) { UseShellExecute = true }); }
+        catch { }
+    }
+    else
+    {
+        Console.WriteLine(diffHtml);
+    }
+    return;
+}
+
+// ---- Snapshot / compare-save / compare-show (autostart only) --------------
+if (parsed.Snapshot || parsed.CompareSave || parsed.CompareShow)
+{
+    if (!parsed.Quiet)
+        AnsiConsole.MarkupLine("[grey]Scanning autostart locations...[/]");
+
+    var scanned = AutostartScanner.ScanAll().Entries;
+    foreach (var a in scanned)
+    {
+        var (score, level, reasons) = RiskScorer.ScoreAutostart(a);
+        a.RiskScore = score;
+        a.RiskLevel = level;
+        a.RiskReasons = reasons;
+    }
+
+    if (parsed.CompareShow)
+    {
+        if (!File.Exists(baselinePath))
+        {
+            AnsiConsole.MarkupLine($"[red]No baseline found at {baselinePath}. Run with -CompareSave (or --compare-save) first.[/]");
+            Environment.Exit(1);
+        }
+
+        var baseline = SnapshotComparer.Load(baselinePath);
+        var current = new Snapshot
+        {
+            TakenUtc = DateTime.UtcNow,
+            Entries = scanned.Select(e => new SnapshotEntry
+            {
+                Source = e.Source,
+                Name = e.Name,
+                Command = e.Command,
+                KnownBenign = e.KnownBenign,
+                RiskScore = e.RiskScore,
+                RiskLevel = e.RiskLevel
+            }).ToList()
+        };
+        var diff = SnapshotComparer.Diff(baseline, current);
+
+        if (!parsed.Quiet)
+        {
+            AnsiConsole.MarkupLine("[bold cyan]Startup comparison (baseline vs current)[/]");
+            AnsiConsole.MarkupLine($"[grey]baseline {baseline.TakenUtc:u}  ->  current {current.TakenUtc:u}[/]");
+            AnsiConsole.WriteLine(SnapshotComparer.RenderConsole(diff));
+        }
+
+        string diffHtml = Path.Combine(logDir, $"compare_{stamp}.html");
+        Directory.CreateDirectory(logDir);
+        File.WriteAllText(diffHtml, SnapshotComparer.RenderHtml(diff));
+        if (!parsed.Quiet)
+        {
+            AnsiConsole.MarkupLine($"\n[grey]Diff HTML:[/] [underline]{diffHtml}[/]");
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(diffHtml) { UseShellExecute = true }); }
+            catch { }
+        }
+        else
+        {
+            Console.WriteLine(diffHtml);
+        }
+        return;
+    }
+
+    string outPath = parsed.CompareSave
+        ? baselinePath
+        : Path.Combine(logDir, $"snapshot_{stamp}.snapshot.json");
+    Directory.CreateDirectory(logDir);
+    File.WriteAllText(outPath, SnapshotComparer.TakeSnapshot(scanned));
+    if (!parsed.Quiet)
+        AnsiConsole.MarkupLine($"[green]Snapshot written:[/] {outPath}  ({scanned.Count} entries)");
+    else
+        Console.WriteLine(outPath);
+    return;
+}
+
+// ---- Full report ----------------------------------------------------------
 
 // ---- 1. Load and merge captured events -----------------------------------
 var creates = new Dictionary<string, CaptureRecord>();
@@ -48,11 +152,11 @@ foreach (var logFile in logFiles)
                 if (rec.Kind == "create") creates[rec.ProcessGuid] = rec;
                 else terminates[rec.ProcessGuid] = rec.TimeUtc;
             }
-            break; // success, exit retry loop
+            break;
         }
         catch (IOException) when (attempt < maxRetries)
         {
-            Thread.Sleep(200 * attempt); // back off: 200ms, 400ms, 600ms
+            Thread.Sleep(200 * attempt);
         }
     }
 }
@@ -66,33 +170,26 @@ var events = creates.Values
     .OrderByDescending(e => e.Create.TimeUtc)
     .ToList();
 
-// Apply time filter if specified
-if (sinceFilter.HasValue)
-{
-    events = events.Where(e => e.Create.TimeUtc >= sinceFilter.Value).ToList();
-}
+if (parsed.Since.HasValue)
+    events = events.Where(e => e.Create.TimeUtc >= parsed.Since.Value).ToList();
 
-// Report skipped records
-if (skippedRecords > 0)
-{
+if (skippedRecords > 0 && !parsed.Quiet)
     AnsiConsole.MarkupLine($"[grey]Note: {skippedRecords} record(s) skipped due to parsing errors[/]\n");
-}
 
-if (events.Count == 0)
-{
+if (events.Count == 0 && !parsed.Quiet)
     AnsiConsole.MarkupLine("[yellow]No captures yet.[/] Make sure InspectorService is running ([bold]Inspector.ps1 -Status[/]) and Sysmon is installed, then wait for the popup to happen again.\n");
+
+if (parsed.FlashOnly)
+{
+    events = events.Where(e => e.IsFlashProcess).ToList();
+    if (!parsed.Quiet)
+        AnsiConsole.MarkupLine($"[grey]Flash filter: showing only {events.Count} process(es) with lifetime < {InspectorConstants.FlashProcessThresholdMs}ms[/]");
 }
 
 // ---- 2. Scan autostart locations ------------------------------------------
-AnsiConsole.MarkupLine("[grey]Scanning autostart locations...[/]");
-var autostart = AutostartScanner.ScanAll();
-
-// ---- Apply flash-only filter if requested ---------------------------------
-if (flashOnly)
-{
-    events = events.Where(e => e.IsFlashProcess).ToList();
-    AnsiConsole.MarkupLine($"[grey]Flash filter: showing only {events.Count} process(es) with lifetime < {InspectorConstants.FlashProcessThresholdMs}ms[/]");
-}
+if (!parsed.Quiet)
+    AnsiConsole.MarkupLine("[grey]Scanning autostart locations...[/]");
+var autostart = AutostartScanner.ScanAll().Entries;
 
 // ---- 3. Correlate + risk-flag each event -----------------------------------
 foreach (var ev in events)
@@ -103,7 +200,6 @@ foreach (var ev in events)
          c.IsSysInternalOrMicrosoftSigned ||
          c.Company?.Contains("Microsoft", StringComparison.OrdinalIgnoreCase) == true);
 
-    // Try to find an autostart entry whose command references this process's parent or command line
     var match = autostart.FirstOrDefault(a =>
         (!string.IsNullOrEmpty(c.ParentCommandLine) && a.Command.Contains(c.ParentCommandLine, StringComparison.OrdinalIgnoreCase)) ||
         (!string.IsNullOrEmpty(c.CommandLine) && a.Command.Length > 10 && c.CommandLine.Contains(a.Command, StringComparison.OrdinalIgnoreCase)));
@@ -111,7 +207,6 @@ foreach (var ev in events)
     if (match != null)
         ev.LikelyTrigger = $"[{match.Source}] {match.Name}";
 
-    // Build ancestor chain: walk up parent links from the capture dictionary
     var ancestorChain = new List<string>();
     var currentGuid = c.ParentProcessGuid;
     int depth = 0;
@@ -136,17 +231,56 @@ foreach (var ev in events)
         ev.RiskLevel = "investigate";
     else
         ev.RiskLevel = "unknown";
+
+    var (score, level, reasons) = RiskScorer.ScoreProcess(c);
+    ev.RiskScore = score;
+    ev.RiskLevelDetailed = level;
+    ev.RiskReasons = reasons;
 }
 
-// ---- Export to file if requested -----------------------------------------
-if (!string.IsNullOrEmpty(exportFile))
+foreach (var a in autostart)
 {
-    ExportData(events, exportFile, argsObj.Format);
-    AnsiConsole.MarkupLine($"[green]Data exported to:[/] [underline]{exportFile}[/]\n");
-    return; // Skip console + HTML output
+    var (score, level, reasons) = RiskScorer.ScoreAutostart(a);
+    a.RiskScore = score;
+    a.RiskLevel = level;
+    a.RiskReasons = reasons;
 }
 
-// ---- 4. Console summary (quick check) --------------------------------------
+// ---- 4. Exports -------------------------------------------------------------
+Directory.CreateDirectory(logDir);
+
+if (!string.IsNullOrEmpty(parsed.ExportFile))
+{
+    if (string.Equals(parsed.Format, "csv", StringComparison.OrdinalIgnoreCase))
+        CsvExporter.Export(events, autostart, parsed.ExportFile);
+    else
+        JsonExporter.Export(events, autostart, parsed.ExportFile);
+    if (!parsed.Quiet)
+        AnsiConsole.MarkupLine($"[green]Data exported to:[/] [underline]{parsed.ExportFile}[/]\n");
+    else
+        Console.WriteLine(parsed.ExportFile);
+    return;
+}
+
+if (parsed.JsonOut != null)
+{
+    JsonExporter.Export(events, autostart, parsed.JsonOut);
+    if (!parsed.Quiet) AnsiConsole.MarkupLine($"[green]JSON export:[/] {parsed.JsonOut}");
+}
+if (parsed.CsvOut != null)
+{
+    CsvExporter.Export(events, autostart, parsed.CsvOut);
+    if (!parsed.Quiet) AnsiConsole.MarkupLine($"[green]CSV export:[/] {parsed.CsvOut}");
+}
+
+// ---- 5. Console summary (quick check) --------------------------------------
+if (parsed.Quiet)
+{
+    int flaggedQ = events.Count(e => e.RiskLevel == "investigate");
+    Console.WriteLine($"captured={events.Count};investigate={flaggedQ};autostart={autostart.Count}");
+    return;
+}
+
 int flaggedN = events.Count(e => e.RiskLevel == "investigate");
 int benignN = events.Count(e => e.RiskLevel == "benign");
 int unknownN = events.Count(e => e.RiskLevel == "unknown");
@@ -164,6 +298,7 @@ AnsiConsole.WriteLine();
 
 var table = new Table().Border(TableBorder.Rounded);
 table.AddColumn("Risk");
+table.AddColumn("Score");
 table.AddColumn("Date & Time");
 table.AddColumn("Process");
 table.AddColumn("Lifetime");
@@ -178,73 +313,37 @@ foreach (var ev in events.Take(displayLimit))
         "benign" => "[green]benign[/]",
         _ => "[yellow]unknown[/]"
     };
+    string scoreCell = ev.RiskLevelDetailed switch
+    {
+        "high" => $"[red]{ev.RiskScore}[/]",
+        "medium" => $"[yellow]{ev.RiskScore}[/]",
+        _ => $"[green]{ev.RiskScore}[/]"
+    };
     string lifetime = ev.LifetimeMs.HasValue ? $"{ev.LifetimeMs.Value:0} ms" : "-";
     string timestamp = ev.Create.TimeUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
-    table.AddRow(riskCell, timestamp,
+    table.AddRow(riskCell, scoreCell, timestamp,
         ev.Create.Image, lifetime, ev.LikelyTrigger ?? "(no autostart match found)");
 }
 AnsiConsole.Write(table);
 
 if (events.Count > displayLimit)
-{
     AnsiConsole.MarkupLine($"\n[grey]Showing {displayLimit} of {events.Count} events. See HTML report for all.[/]");
-}
 
 var flagged = events.Where(e => e.RiskLevel == "investigate").ToList();
 if (flagged.Any())
-{
     AnsiConsole.MarkupLine($"\n[red bold]{flagged.Count} item(s) flagged for investigation.[/] See the HTML report for full command lines, hashes, and signer info.");
-}
 else if (events.Count > 0)
-{
     AnsiConsole.MarkupLine("\n[green]Nothing flagged  -  everything captured matches a known-benign pattern or a trusted publisher.[/]");
-}
 
-// ---- 5. HTML report (deep dive) --------------------------------------------
-Directory.CreateDirectory(logDir);
+// ---- 6. HTML report (deep dive) --------------------------------------------
 HtmlReportBuilder.Build(events, autostart, htmlOut);
 AnsiConsole.MarkupLine($"\n[grey]Full HTML report:[/] [underline]{htmlOut}[/]");
-
-// Clean up old HTML reports (older than 30 days)
 CleanupOldReports(logDir, retentionDays: 30);
 
-if (openHtml)
+if (!parsed.NoOpen)
 {
     try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(htmlOut) { UseShellExecute = true }); }
-    catch { /* non-fatal if it can't auto-open */ }
-}
-
-// ---- Helper Functions ------------------------------------------------------
-
-static void ExportData(List<MergedEvent> events, string filePath, string format)
-{
-    Directory.CreateDirectory(Path.GetDirectoryName(filePath) ?? ".");
-
-    switch (format.ToLowerInvariant())
-    {
-        case "csv":
-            var csv = new System.Text.StringBuilder();
-            csv.AppendLine("Timestamp,Process,PID,CommandLine,User,RiskLevel,LifetimeMs,LikelyTrigger");
-            foreach (var e in events)
-            {
-                var c = e.Create;
-                csv.AppendLine($"\"{c.TimeUtc:yyyy-MM-dd HH:mm:ss}\",\"{c.Image}\",{c.Pid},\"{EscapeCsv(c.CommandLine)}\",\"{c.User}\",\"{e.RiskLevel}\",\"{e.LifetimeMs?.ToString("0") ?? ""}\",\"{EscapeCsv(e.LikelyTrigger)}\"");
-            }
-            File.WriteAllText(filePath, csv.ToString());
-            break;
-
-        case "json":
-        default:
-            var json = JsonSerializer.Serialize(events, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(filePath, json);
-            break;
-    }
-}
-
-static string EscapeCsv(string? s)
-{
-    if (string.IsNullOrEmpty(s)) return "";
-    return s.Replace("\"", "\"\"").Replace("\n", " ").Replace("\r", "");
+    catch { }
 }
 
 static void CleanupOldReports(string logDir, int retentionDays)
@@ -254,41 +353,29 @@ static void CleanupOldReports(string logDir, int retentionDays)
         if (!Directory.Exists(logDir)) return;
 
         var cutoffDate = DateTime.Now.AddDays(-retentionDays);
-        var reportFiles = Directory.GetFiles(logDir, "report_*.html");
         int deletedCount = 0;
 
-        foreach (var reportFile in reportFiles)
+        foreach (var reportFile in Directory.GetFiles(logDir, "report_*.html"))
         {
             try
             {
-                var fileInfo = new FileInfo(reportFile);
-                if (fileInfo.LastWriteTime < cutoffDate)
+                if (new FileInfo(reportFile).LastWriteTime < cutoffDate)
                 {
                     File.Delete(reportFile);
                     deletedCount++;
                 }
             }
-            catch
-            {
-                // Ignore individual file errors (might be locked, etc.)
-            }
+            catch { }
         }
 
         if (deletedCount > 0)
-        {
             AnsiConsole.MarkupLine($"[grey]Cleaned up {deletedCount} old report(s) (older than {retentionDays} days)[/]");
-        }
     }
-    catch
-    {
-        // Non-fatal, just skip cleanup if something goes wrong
-    }
+    catch { }
 }
 
-// ---- Helper Classes --------------------------------------------------------
-
 /// <summary>
-/// Simple CLI argument parser for InspectorReport
+/// CLI argument parser for InspectorReport.
 /// </summary>
 public class ArgsParser
 {
@@ -297,44 +384,101 @@ public class ArgsParser
     public DateTime? Since { get; }
     public bool NoOpen { get; }
     public bool FlashOnly { get; }
+    public bool Quiet { get; }
+    public string? JsonOut { get; }
+    public string? CsvOut { get; }
+    public bool Snapshot { get; }
+    public bool CompareSave { get; }
+    public bool CompareShow { get; }
+    public string? CompareBefore { get; }
+    public string? CompareAfter { get; }
+    public string? CompareOut { get; }
 
     public ArgsParser(string[] args)
     {
+        string? export = null, format = "json", since = null;
+        string? json = null, csv = null;
+        string? before = null, after = null, outPath = null;
+        bool noOpen = false, flashOnly = false, quiet = false;
+        bool snapshot = false, compareSave = false, compareShow = false;
+
         for (int i = 0; i < args.Length; i++)
         {
-            var arg = args[i].ToLowerInvariant();
-            switch (arg)
+            var arg = args[i];
+            switch (arg.ToLowerInvariant())
             {
                 case "--export":
                 case "-e":
-                    if (i + 1 < args.Length) ExportFile = args[++i];
+                    if (i + 1 < args.Length) export = args[++i];
                     break;
                 case "--format":
                 case "-f":
-                    if (i + 1 < args.Length) Format = args[++i].ToLowerInvariant();
+                    if (i + 1 < args.Length) format = args[++i].ToLowerInvariant();
                     break;
                 case "--since":
-                    if (i + 1 < args.Length) Since = ParseSince(args[++i]);
+                    if (i + 1 < args.Length) since = args[++i];
                     break;
                 case "--no-open":
                 case "-n":
-                    NoOpen = true;
+                    noOpen = true;
                     break;
                 case "--flash-only":
                 case "-flash":
-                    FlashOnly = true;
+                    flashOnly = true;
+                    break;
+                case "--quiet":
+                    quiet = true;
+                    break;
+                case "--json":
+                    if (i + 1 < args.Length) json = args[++i];
+                    break;
+                case "--csv":
+                    if (i + 1 < args.Length) csv = args[++i];
+                    break;
+                case "--snapshot":
+                    snapshot = true;
+                    break;
+                case "--compare-save":
+                    compareSave = true;
+                    break;
+                case "--compare-show":
+                    compareShow = true;
+                    break;
+                case "--compare":
+                    for (int j = i + 1; j < args.Length; j++)
+                    {
+                        if (args[j].StartsWith("--")) break;
+                        if (before == null) before = args[j];
+                        else if (after == null) after = args[j];
+                    }
+                    break;
+                case "--out":
+                    if (i + 1 < args.Length) outPath = args[++i];
                     break;
             }
         }
+
+        ExportFile = export;
+        if (format != null) Format = format;
+        if (since != null) Since = ParseSince(since);
+        NoOpen = noOpen;
+        FlashOnly = flashOnly;
+        Quiet = quiet;
+        JsonOut = json;
+        CsvOut = csv;
+        Snapshot = snapshot;
+        CompareSave = compareSave;
+        CompareShow = compareShow;
+        CompareBefore = before;
+        CompareAfter = after;
+        CompareOut = outPath;
     }
 
     private static DateTime? ParseSince(string value)
     {
-        // Try parsing as ISO date
         if (DateTime.TryParse(value, out var result))
             return result;
 
-        // Try parsing duration like "24h", "7d"
         var match = System.Text.RegularExpressions.Regex.Match(value, @"^(\d+)([dh])$");
         if (match.Success)
         {

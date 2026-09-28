@@ -40,8 +40,40 @@ public static class InspectorConstants
         "Microsoft Compatibility Appraiser", "CreateExplorerShellUnelevatedTask",
         "Application Experience", "Adobe Acrobat Update Task", "WindowsUpdate",
         "NvTmMon", "NvTmRep", "\\HP\\", "\\Dell\\", "\\Lenovo\\", "Autochk",
-        "Windows Defender", "WindowsSecurity", "SecurityHealth"
+        "Windows Defender", "WindowsSecurity", "SecurityHealth",
+        // Additional known-benign vendors/patterns
+        "Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved",
+        "\\AppData\\Local\\Microsoft\\OneDrive\\",
+        "C:\\Program Files\\Google\\Update\\",
+        "C:\\Program Files\\Mozilla Firefox\\",
+        "C:\\Program Files\\Mozilla Firefox (x86)\\",
+        "C:\\Program Files (x86)\\Mozilla Firefox\\",
+        "Adobe Desktop Common", "AdobeIPCB", "AcrobatAssistant",
+        "Logitech Download Assistant", "Logitech G HUB",
+        "NVIDIA Corporation", "Realtek\\Audio",
+        "TeamViewer", "AnyDesk", "Zoom", "Slack",
+        "VMware", "VirtualBox", "Docker Desktop",
+        "Steam Client", "Epic Games", "Ubisoft Connect",
+        "EpicOnlineServices", "Origin", "Battle.net",
     };
+
+    // Directories considered "standard" for trusted executables
+    public static readonly string[] TrustedBasePaths =
+    {
+        "C:\\Program Files\\",
+        "C:\\Program Files (x86)\\",
+        "C:\\Windows\\System32\\",
+        "C:\\Windows\\SysWOW64\\",
+    };
+
+    // Threshold in days for flagging recently created files
+    public const int RecentFileThresholdDays = 30;
+
+    // Risk score thresholds
+    public const int RiskThresholdHigh = 40;      // >= 40 => "Probably suspicious"
+    public const int RiskThresholdMedium = 15;    // >= 15 (and < 40) => "Investigate"
+    // Score < 15 and not known benign => "Investigate" (low-confidence)
+    // Known benign and < 20 => "Likely benign"
 }
 
 /// <summary>

@@ -1,24 +1,10 @@
-# Build outputs
-bin/
-obj/
-*.dll
-*.exe
-*.pdb
+# ------------------------------------------------------------------------------
+# Inspector v2 .gitignore
+# ------------------------------------------------------------------------------
 
-# User-specific files
-*.user
-*.suo
-*.userosscache
-*.sln.docstates
-
-# Visual Studio
-.vs/
-*.rsuser
-
-# Rider
-.idea/
-
-# Build results
+# --- .NET build artifacts ---
+[Bb]in/
+[Oo]bj/
 [Dd]ebug/
 [Rr]elease/
 x64/
@@ -26,8 +12,25 @@ x86/
 [Aa]rm/
 [Aa]rm64/
 bld/
-[Bb]in/
-[Oo]bj/
+*.dll
+*.exe
+*.pdb
+*.cache
+*.ilk
+*.meta
+*.obj
+*.iobj
+*.ipdb
+*.log
+*.tmp
+*.temp
+*.bak
+*~
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.rsuser
 
 # NuGet
 *.nupkg
@@ -35,27 +38,59 @@ bld/
 packages/
 .nuget/
 
-# Test results
+# Publish output
+publish/
+
+# --- Test results ---
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*
+*.trx
+coverage*.json
+coverage*.xml
+coverage*.info
 
-# Runtime data (DO NOT commit user data)
-C:/ProgramData/Inspector/
-capture*.jsonl
-report_*.html
-config.json
+# --- Node / website tooling (not used by the core tool) ---
+node_modules/
+.parcel-cache/
+.pnpm-store/
+dist/
+build/
 
-# Logs
-*.log
+# --- IDE / editor state ---
+.vs/
+.idea/
+.vscode/
+*.code-workspace
 
-# OS files
+# --- OS metadata ---
 Thumbs.db
 ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 .DS_Store
 
-# Temporary files
-*.tmp
-*.temp
-*~
+# --- Inspector runtime data (machine-local, NEVER commit) ---
+# Captures, generated HTML reports, snapshots, and config contain real
+# process command lines, usernames, and paths from the local machine.
+capture*.jsonl
+report_*.html
+compare_*.html
+snapshot_*.json
+baseline.snapshot.json
+config.json
+*.log
+C:\ProgramData\Inspector\
+
+# --- Secrets / local environment ---
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.snk
+secrets.json
+appsettings.*.Local.json
+
+# --- Misc ---
+*.lnk
+Archive/

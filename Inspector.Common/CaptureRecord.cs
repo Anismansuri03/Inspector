@@ -51,6 +51,11 @@ public class MergedEvent
     public string? LikelyTrigger { get; set; }
     public string RiskLevel { get; set; } = "unknown"; // "benign", "unknown", "investigate"
 
+    // Heuristic score (0-100), detailed bucket ("high"/"medium"/"low"), and reasons
+    public int RiskScore { get; set; }
+    public string RiskLevelDetailed { get; set; } = "low";
+    public List<string> RiskReasons { get; set; } = new();
+
     // Extended properties for enhanced reporting
     public string? FileHash { get; set; }
     public List<string> AncestorChain { get; set; } = new();
