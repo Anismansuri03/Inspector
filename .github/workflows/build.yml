@@ -52,7 +52,18 @@ jobs:
 
       - name: Run tests
         shell: powershell
-        run: Invoke-Pester -Script ./tests/Inspector.Tests.ps1
+        # The suite targets Pester 3.4 (see tests/Inspector.Tests.ps1 header).
+        # Runner images ship both Pester 3.4.0 and 5.9.0; auto-resolution picks
+        # 5.9.0, whose Discovery/Run two-phase model makes the suite's top-level
+        # helper functions and Describe-body variables invisible during Run
+        # (CommandNotFoundException / null-path failures). Pin 3.4.0 to match
+        # the suite's documented contract. Pester 3.4 does not set
+        # $LASTEXITCODE, so failures are propagated explicitly via FailedCount.
+        run: |
+          Import-Module Pester -RequiredVersion 3.4.0 -Force
+          $r = Invoke-Pester -Script ./tests/Inspector.Tests.ps1 -PassThru
+          if ($null -eq $r -or $r.FailedCount -gt 0) { exit 1 }
+          exit 0
 
       - name: Upload InspectorService artifact
         uses: actions/upload-artifact@v4
