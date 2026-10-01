@@ -1,4 +1,4 @@
-# 🛡️ Inspector
+<img src="https://i.ibb.co/Q71Bg3Rr/New-Project-5-1.png" width="400" alt="sus" />
 
 **What was that command window that just flashed and disappeared?**
 <img src="https://i.ibb.co/FqdJ3n4J/ezgif-392a8bdcb9456d1b-ezgif-com-cut.gif" width="500" alt="sus" />
